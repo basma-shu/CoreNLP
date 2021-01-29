@@ -207,14 +207,11 @@ public class ReorderingOracle {
     BinaryTransition lastBinary = null;
     while (cursor.hasNext() && shiftCount >= 0) {
       Transition next = cursor.next();
-      if (next instanceof ShiftTransition) {
-        ++shiftCount;
-      } else if (next instanceof BinaryTransition) {
-        --shiftCount;
-        if (shiftCount < 0) {
-          lastBinary = (BinaryTransition) next;
-          cursor.remove();
-        }
+      shiftCount = shiftCount + next.stackSizeChange();
+      if (shiftCount < 0) {
+        // TODO: look for potential alternative Binary types
+        lastBinary = (BinaryTransition) next;
+        cursor.remove();
       }
     }
     if (!cursor.hasNext() || lastBinary == null) {

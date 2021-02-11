@@ -271,7 +271,7 @@ public class PerceptronModel extends BaseModel  {
     ReorderingOracle reorderer = null;
     if (op.trainOptions().trainingMethod == ShiftReduceTrainOptions.TrainingMethod.REORDER_ORACLE ||
         op.trainOptions().trainingMethod == ShiftReduceTrainOptions.TrainingMethod.REORDER_BEAM) {
-      reorderer = new ReorderingOracle(op, rootOnlyStates);
+      reorderer = new ReorderingOracle(op, rootOnlyStates, transitionIndex);
     }
 
     int reorderSuccess = 0;

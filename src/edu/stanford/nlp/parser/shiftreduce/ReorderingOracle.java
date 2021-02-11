@@ -5,6 +5,7 @@ import java.util.ListIterator;
 import java.util.Set;
 
 import edu.stanford.nlp.util.Generics;
+import edu.stanford.nlp.util.Index;
 
 /**
  * A second attempt at making an oracle.  Instead of always trying to
@@ -19,9 +20,12 @@ public class ReorderingOracle {
 
   final Set<String> rootOnlyStates;
 
-  public ReorderingOracle(ShiftReduceOptions op, Set<String> rootOnlyStates) {
+  final Index<Transition> transitionIndex;
+
+  public ReorderingOracle(ShiftReduceOptions op, Set<String> rootOnlyStates, Index<Transition> transitionIndex) {
     this.op = op;
     this.rootOnlyStates = rootOnlyStates;
+    this.transitionIndex = transitionIndex;
   }
 
   /**
@@ -66,7 +70,14 @@ public class ReorderingOracle {
       if (state.stack.size() == 0) {
         return false;
       }
-      return true;
+      // one possible fix is that if there is a shift, followed by
+      // some number of binary transitions, and the binary transition
+      // at that point is present as a BinaryRemoveUnaryTransition, we
+      // can try to turn it into a BinaryRemoveUnaryTransition
+      // TODO: there is an issue here that future BinaryTransition
+      // subclasses will match the instanceof.  we should consider
+      // making BinaryRemoveUnaryTransition not a subclass
+      return replaceBinaryWithRemoveUnary(transitions);
     }
 
     if (chosenTransition instanceof BinaryTransition) {
@@ -103,6 +114,8 @@ public class ReorderingOracle {
       return true;
     }
 
+    // TODO: fix this for the BinaryRemoveUnaryTransition...
+    // for that matter, fix it in general
     if ((chosenTransition instanceof ShiftTransition) && (goldTransition instanceof BinaryTransition)) {
       // can't shift at the end of the queue
       if (state.endOfQueue()) {
@@ -117,6 +130,38 @@ public class ReorderingOracle {
     }
 
     return false;
+  }
+
+  boolean replaceBinaryWithRemoveUnary(List<Transition> transitions) {
+    if (!(transitions.get(0) instanceof ShiftTransition))
+      return true;
+
+    int shiftCount = 0;
+    ListIterator<Transition> cursor = transitions.listIterator();
+
+    Transition next;
+    do {
+      if (!cursor.hasNext()) {
+        return true;
+      }
+      next = cursor.next();
+      if (next instanceof ShiftTransition) {
+        ++shiftCount;
+      } else if (next instanceof BinaryTransition) {
+        --shiftCount;
+      }
+    } while (shiftCount > 0);
+
+    if (!(next instanceof BinaryTransition)) {
+      throw new AssertionError("should have only decreased shiftCount for a BinaryTransition, instead had " + next);
+    }
+    BinaryTransition bt = (BinaryTransition) next;
+    BinaryRemoveUnaryTransition candidate = new BinaryRemoveUnaryTransition(bt.label, bt.side, bt.isRoot);
+    if (transitionIndex.contains(candidate)) {
+      cursor.set(candidate);
+    }
+
+    return true;
   }
 
   /**
@@ -135,6 +180,9 @@ public class ReorderingOracle {
    * produce more errors after that.  However, there's no better
    * solution for that situation anyway, unless we could decide that
    * A+B+C / D is better than A+B / C+D as a replacement for A / B+C+D
+   * <br>
+   * TODO: add a transition which allows rearranging A+B / C into
+   * A / B+C?
    */
   boolean reorderIncorrectBinaryTransition(List<Transition> transitions) {
     int shiftCount = 0;

@@ -819,61 +819,17 @@ public class PerceptronModel extends BaseModel  {
     return index;
   }
 
-  /**
-   * Creates a list of BinaryRemoveUnaryTransition based on the most
-   * frequently appearing BinaryTransition after one of the
-   * UnaryTransitions the model is getting wrong
-   */
-  static List<BinaryRemoveUnaryTransition> addExtraShiftUnaryTransitions(List<Transition> shiftUnaryErrors,
-                                                                         List<TrainingExample> trainingData,
-                                                                         int numNewTransitions) {
-    IntCounter<BinaryTransition> subsequentBinaries = new IntCounter<>();
-
-    // first, for each sentence, we find BinaryTransition that uses
-    // the node created by the UnaryTransition.  There is always
-    // exactly one...  If the UnaryTransition component is the right
-    // side of it, eg the BinaryTransition was immediately after the
-    // Unary, we assume it can't be fixed.  Otherwise, we keep track
-    // of how many times each Binary fills that role.
-    for (TrainingExample example : trainingData) {
-      List<Transition> transitions = example.transitions;
-      // TODO: we are only keeping the first transition found this way
-      // might be better to keep them all
-      int index = findTransitionInList(transitions, 0, (x) -> shiftUnaryErrors.contains(x));
-      if (index < 0) {
-        continue;
-      }
-
-      index = findClosingBinary(transitions, index);
-      if (index < 0) {
-        // this happens when the first BinaryTransition occurs after
-        // the UnaryTransition, before any ShiftTransitions.  In other
-        // words, the UnaryTransition piece was the right side of the
-        // BinaryTransition.  We don't try to fix that
-        continue;
-      }
-
-      subsequentBinaries.incrementCount((BinaryTransition) transitions.get(index));
-    }
-    Counters.retainTop(subsequentBinaries, numNewTransitions);
-
-    List<BinaryRemoveUnaryTransition> newTransitions = new ArrayList<>();
-    for (BinaryTransition bt : subsequentBinaries.keySet()) {
-      newTransitions.add(new BinaryRemoveUnaryTransition(bt.label, bt.side, bt.isRoot));
-    }
-    return newTransitions;
-  }
-
   static TrainingExample newExtraShiftUnaryExample(TrainingExample example,
                                                    List<Transition> shiftUnaryErrors,
-                                                   Map<BinaryTransition, BinaryRemoveUnaryTransition> originalTransitions,
+                                                   RemoveUnaryTransition removeUnary,
                                                    Random random,
                                                    double ratio) {
     // TODO: a worthwhile experiment would be to see if using the
     // partially trained parser to predict the best places to put
     // these new transitions improves the results
     List<Transition> transitions = example.transitions;
-    int index = chooseRandomTransition(transitions, random, (x) -> originalTransitions.containsKey(x));
+    // TODO: perhaps try to use some logic for where the UnaryTransition errors occur most commonly
+    int index = chooseRandomTransition(transitions, random, (x) -> (x instanceof BinaryTransition));
     if (index < 0) {
       return null;
     }
@@ -914,29 +870,23 @@ public class PerceptronModel extends BaseModel  {
     fakeTransitions.add(shiftUnaryErrors.get(random.nextInt(shiftUnaryErrors.size())));
     // add the remaining transitions until the BinaryTransition we wanted to learn how to fix
     fakeTransitions.addAll(transitions.subList(unaryIndex, index));
-    fakeTransitions.add(originalTransitions.get(transitions.get(index)));
-    fakeTransitions.addAll(transitions.subList(index+1, transitions.size()));
+    fakeTransitions.add(removeUnary);
+    fakeTransitions.addAll(transitions.subList(index, transitions.size()));
     return new TrainingExample(example.binarizedTree,
                                fakeTransitions,
                                unaryIndex+1);
   }
 
   static List<TrainingExample> extraShiftUnaryExamples(List<Transition> shiftUnaryErrors,
-                                                       List<BinaryRemoveUnaryTransition> newRemoveUnary,
                                                        Index<Transition> newTransitions,
+                                                       RemoveUnaryTransition removeUnary,
                                                        List<TrainingExample> trainingData,
                                                        Random random,
                                                        double ratio) {
     List<TrainingExample> newExamples = new ArrayList<>();
 
-    Map<BinaryTransition, BinaryRemoveUnaryTransition> originalTransitions = new HashMap<>();
-    newRemoveUnary.forEach((x) -> {
-        BinaryTransition bt = new BinaryTransition(x.label, x.side, x.isRoot);
-        originalTransitions.put(bt, x);
-      });
-
     for (TrainingExample example : trainingData) {
-      TrainingExample newExample = newExtraShiftUnaryExample(example, shiftUnaryErrors, originalTransitions, random, ratio);
+      TrainingExample newExample = newExtraShiftUnaryExample(example, shiftUnaryErrors, removeUnary, random, ratio);
       if (newExample == null) {
         continue;
       }
@@ -990,13 +940,10 @@ public class PerceptronModel extends BaseModel  {
     log.info("Most common gold unary, predicted shift errors: " + unaryShiftErrors);
 
     Index<Transition> newTransitions = new HashIndex<>(transitionIndex);
-    // TODO: make 10 and 0.5 options
-    List<BinaryRemoveUnaryTransition> newRemoveUnary = addExtraShiftUnaryTransitions(shiftUnaryErrors, trainingData, 10);
-    for (BinaryRemoveUnaryTransition t : newRemoveUnary) {
-      log.info("Adding new BinaryRemoveUnaryTransition: " + t);
-    }
-    newRemoveUnary.forEach(newTransitions::add);
-    List<TrainingExample> newExamples = extraShiftUnaryExamples(shiftUnaryErrors, newRemoveUnary, newTransitions, trainingData, random, 0.5);
+    // TODO: make 0.5 an option
+    RemoveUnaryTransition removeUnary = new RemoveUnaryTransition();
+    newTransitions.add(removeUnary);
+    List<TrainingExample> newExamples = extraShiftUnaryExamples(shiftUnaryErrors, newTransitions, removeUnary, trainingData, random, 0.5);
 
     List<TrainingExample> newTraining = new ArrayList<>(trainingData);
     newTraining.addAll(newExamples);

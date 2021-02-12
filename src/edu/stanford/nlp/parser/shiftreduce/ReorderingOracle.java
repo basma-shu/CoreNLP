@@ -22,6 +22,8 @@ public class ReorderingOracle {
 
   final Index<Transition> transitionIndex;
 
+  static final RemoveUnaryTransition removeUnary = new RemoveUnaryTransition();
+
   public ReorderingOracle(ShiftReduceOptions op, Set<String> rootOnlyStates, Index<Transition> transitionIndex) {
     this.op = op;
     this.rootOnlyStates = rootOnlyStates;
@@ -71,13 +73,10 @@ public class ReorderingOracle {
         return false;
       }
       // one possible fix is that if there is a shift, followed by
-      // some number of binary transitions, and the binary transition
-      // at that point is present as a BinaryRemoveUnaryTransition, we
-      // can try to turn it into a BinaryRemoveUnaryTransition
-      // TODO: there is an issue here that future BinaryTransition
-      // subclasses will match the instanceof.  we should consider
-      // making BinaryRemoveUnaryTransition not a subclass
-      return replaceBinaryWithRemoveUnary(transitions);
+      // some number of binary transitions, and the model is being
+      // built with a RemoveUnaryTransition, we can try to add that
+      // and fix the Unary error at that point
+      return addRemoveUnary(transitions);
     }
 
     if (chosenTransition instanceof BinaryTransition) {
@@ -132,9 +131,13 @@ public class ReorderingOracle {
     return false;
   }
 
-  boolean replaceBinaryWithRemoveUnary(List<Transition> transitions) {
+  boolean addRemoveUnary(List<Transition> transitions) {
     if (!(transitions.get(0) instanceof ShiftTransition))
       return true;
+    if (!transitionIndex.contains(removeUnary)) {
+      // this model doesn't know how to use RemoveUnaryTransition
+      return true;
+    }
 
     int shiftCount = 0;
     ListIterator<Transition> cursor = transitions.listIterator();
@@ -152,14 +155,13 @@ public class ReorderingOracle {
       }
     } while (shiftCount > 0);
 
+    //System.out.println("Adding a remove-unary for this transition sequence: " + transitions);
     if (!(next instanceof BinaryTransition)) {
       throw new AssertionError("should have only decreased shiftCount for a BinaryTransition, instead had " + next);
     }
-    BinaryTransition bt = (BinaryTransition) next;
-    BinaryRemoveUnaryTransition candidate = new BinaryRemoveUnaryTransition(bt.label, bt.side, bt.isRoot);
-    if (transitionIndex.contains(candidate)) {
-      cursor.set(candidate);
-    }
+    cursor.previous();
+    cursor.add(removeUnary);
+    //System.out.println("  Updated to: " + transitions);
 
     return true;
   }

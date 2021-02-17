@@ -1,5 +1,6 @@
 package edu.stanford.nlp.parser.shiftreduce;
 
+import java.util.Arrays;
 import java.util.List;
 
 import edu.stanford.nlp.parser.common.ParserConstraint;
@@ -10,10 +11,31 @@ import edu.stanford.nlp.util.TreeShapedStack;
  * Removes the unary transitions from stack position n-1.  Potentially
  * the model has learned enough about the node to fix an early
  * incorrect Unary / CompoundUnary transition.
- * <br>
- * TODO: also experiment with lexicalized versions of this transition
  */
 public class RemoveUnaryTransition implements Transition {
+  /** which labels to remove */
+  public final String[] labels;
+
+  public RemoveUnaryTransition(String label) {
+    this.labels = new String[1];
+    this.labels[0] = label;
+  }
+
+  public RemoveUnaryTransition(String[] labels) {
+    this.labels = new String[labels.length];
+    for (int i = 0; i < labels.length; ++i) {
+      this.labels[i] = labels[i];
+    }
+  }
+
+  public RemoveUnaryTransition(UnaryTransition t) {
+    this(t.label);
+  }
+
+  public RemoveUnaryTransition(CompoundUnaryTransition t) {
+    this(t.labels);
+  }
+
   /**
    * Whether or not it is legal to apply this transition to this state.
    */
@@ -26,17 +48,24 @@ public class RemoveUnaryTransition implements Transition {
       return false;
     }
 
-    // there can only be unary transitions to remove if the top node
-    // is a unary
     Tree prevNode = state.stack.pop().peek();
-    if (prevNode.children().length > 1) {
-      return false;
-    }
 
-    // there were no unary transitions if the node in question is a
-    // preterminal or leaf
-    if (prevNode.isLeaf() || prevNode.isPreTerminal()) {
-      return false;
+    Tree node = prevNode;
+    for (int i = labels.length - 1; i >= 0; --i) {
+      // there can only be unary transitions to remove if the top node
+      // is a unary
+      if (node.children().length > 1) {
+        return false;
+      }
+      // there were no unary transitions if the node in question is a
+      // preterminal or leaf
+      if (node.isLeaf() || node.isPreTerminal()) {
+        return false;
+      }
+      if (!node.label().value().equals(labels[i])) {
+        return false;
+      }
+      node = node.children()[0];
     }
 
     if (constraints == null) {
@@ -78,8 +107,11 @@ public class RemoveUnaryTransition implements Transition {
     Tree left = stack.peek();
     stack = stack.pop();
 
-    // find the bottom of the unary chain
-    while (left.children().length == 1 && !left.isPreTerminal()) {
+    for (int i = 0; i < labels.length; ++i) {
+      if (left.children().length != 1 || left.isPreTerminal()) {
+        // uh oh... something went wrong.  pretend nothing happened
+        break;
+      }
       left = left.children()[0];
     }
 
@@ -108,17 +140,18 @@ public class RemoveUnaryTransition implements Transition {
     if (o instanceof RemoveUnaryTransition) {
       return true;
     }
-    return false;
+    String[] otherLabels = ((RemoveUnaryTransition) o).labels;
+    return Arrays.equals(labels, otherLabels);
   }
 
   @Override
   public int hashCode() {
-    return 796253456; // a random int
+    return 796253456 ^ Arrays.hashCode(labels); // a random int
   }
 
   @Override
   public String toString() {
-    return "RemoveUnary";
+    return "RemoveUnary(" + Arrays.asList(labels).toString() + ")";
   }
 
   private static final long serialVersionUID = 2517806537914809385L;

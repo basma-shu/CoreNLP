@@ -821,7 +821,7 @@ public class PerceptronModel extends BaseModel  {
 
   static TrainingExample newExtraShiftUnaryExample(TrainingExample example,
                                                    List<Transition> shiftUnaryErrors,
-                                                   RemoveUnaryTransition removeUnary,
+                                                   Map<Transition, RemoveUnaryTransition> removeUnaries,
                                                    Random random,
                                                    double ratio) {
     // TODO: a worthwhile experiment would be to see if using the
@@ -867,7 +867,12 @@ public class PerceptronModel extends BaseModel  {
     List<Transition> fakeTransitions = new ArrayList<>();
     fakeTransitions.addAll(transitions.subList(0, unaryIndex));
     // randomly pick an error to pretend we made
-    fakeTransitions.add(shiftUnaryErrors.get(random.nextInt(shiftUnaryErrors.size())));
+    Transition errorUnary = shiftUnaryErrors.get(random.nextInt(shiftUnaryErrors.size()));
+    RemoveUnaryTransition removeUnary = removeUnaries.get(errorUnary);
+    if (removeUnary == null) {
+      throw new AssertionError("All common shift->unary errors should be covered by a RemoveUnaryTransition");
+    }
+    fakeTransitions.add(errorUnary);
     // add the remaining transitions until the BinaryTransition we wanted to learn how to fix
     fakeTransitions.addAll(transitions.subList(unaryIndex, index));
     fakeTransitions.add(removeUnary);
@@ -879,14 +884,14 @@ public class PerceptronModel extends BaseModel  {
 
   static List<TrainingExample> extraShiftUnaryExamples(List<Transition> shiftUnaryErrors,
                                                        Index<Transition> newTransitions,
-                                                       RemoveUnaryTransition removeUnary,
+                                                       Map<Transition, RemoveUnaryTransition> removeUnaries,
                                                        List<TrainingExample> trainingData,
                                                        Random random,
                                                        double ratio) {
     List<TrainingExample> newExamples = new ArrayList<>();
 
     for (TrainingExample example : trainingData) {
-      TrainingExample newExample = newExtraShiftUnaryExample(example, shiftUnaryErrors, removeUnary, random, ratio);
+      TrainingExample newExample = newExtraShiftUnaryExample(example, shiftUnaryErrors, removeUnaries, random, ratio);
       if (newExample == null) {
         continue;
       }
@@ -896,6 +901,21 @@ public class PerceptronModel extends BaseModel  {
       newExamples.add(newExample);
     }
     return newExamples;
+  }
+
+  static Map<Transition, RemoveUnaryTransition> buildRemoveUnaryMap(List<Transition> shiftUnaryErrors) {
+    Map<Transition, RemoveUnaryTransition> removeUnaries = new HashMap<>();
+    for (Transition t : shiftUnaryErrors) {
+      if (t instanceof UnaryTransition) {
+        removeUnaries.put(t, new RemoveUnaryTransition((UnaryTransition) t));
+      } else if (t instanceof CompoundUnaryTransition) {
+        removeUnaries.put(t, new RemoveUnaryTransition((CompoundUnaryTransition) t));
+      } else {
+        throw new AssertionError("Unexpected transition: " + t);
+      }
+      log.info("Added new transition: " + t + " -> " + removeUnaries.get(t));
+    }
+    return removeUnaries;
   }
 
   static Pair<Index<Transition>, List<TrainingExample>> chooseExtraTransitions(Index<Transition> transitionIndex,
@@ -941,9 +961,9 @@ public class PerceptronModel extends BaseModel  {
 
     Index<Transition> newTransitions = new HashIndex<>(transitionIndex);
     // TODO: make 0.5 an option
-    RemoveUnaryTransition removeUnary = new RemoveUnaryTransition();
-    newTransitions.add(removeUnary);
-    List<TrainingExample> newExamples = extraShiftUnaryExamples(shiftUnaryErrors, newTransitions, removeUnary, trainingData, random, 0.5);
+    Map<Transition, RemoveUnaryTransition> removeUnaries = buildRemoveUnaryMap(shiftUnaryErrors);
+    newTransitions.addAll(removeUnaries.values());
+    List<TrainingExample> newExamples = extraShiftUnaryExamples(shiftUnaryErrors, newTransitions, removeUnaries, trainingData, random, 0.5);
 
     List<TrainingExample> newTraining = new ArrayList<>(trainingData);
     newTraining.addAll(newExamples);

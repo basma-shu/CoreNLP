@@ -22,8 +22,6 @@ public class ReorderingOracle {
 
   final Index<Transition> transitionIndex;
 
-  static final RemoveUnaryTransition removeUnary = new RemoveUnaryTransition();
-
   public ReorderingOracle(ShiftReduceOptions op, Set<String> rootOnlyStates, Index<Transition> transitionIndex) {
     this.op = op;
     this.rootOnlyStates = rootOnlyStates;
@@ -76,7 +74,7 @@ public class ReorderingOracle {
       // some number of binary transitions, and the model is being
       // built with a RemoveUnaryTransition, we can try to add that
       // and fix the Unary error at that point
-      return addRemoveUnary(transitions);
+      return addRemoveUnary(transitions, chosenTransition);
     }
 
     if (chosenTransition instanceof BinaryTransition) {
@@ -131,11 +129,19 @@ public class ReorderingOracle {
     return false;
   }
 
-  boolean addRemoveUnary(List<Transition> transitions) {
+  boolean addRemoveUnary(List<Transition> transitions, Transition chosenTransition) {
     if (!(transitions.get(0) instanceof ShiftTransition))
       return true;
+    final Transition removeUnary;
+    if (chosenTransition instanceof UnaryTransition) {
+      removeUnary = new RemoveUnaryTransition((UnaryTransition) chosenTransition);
+    } else if (chosenTransition instanceof CompoundUnaryTransition) {
+      removeUnary = new RemoveUnaryTransition((CompoundUnaryTransition) chosenTransition);
+    } else {
+      throw new AssertionError("Should not reach here with anything other than a (Compound)UnaryTransition");
+    }
     if (!transitionIndex.contains(removeUnary)) {
-      // this model doesn't know how to use RemoveUnaryTransition
+      // this model doesn't know how to use this RemoveUnaryTransition
       return true;
     }
 

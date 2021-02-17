@@ -137,8 +137,8 @@ public class RemoveUnaryTransition implements Transition {
     if (o == this) {
       return true;
     }
-    if (o instanceof RemoveUnaryTransition) {
-      return true;
+    if (!(o instanceof RemoveUnaryTransition)) {
+      return false;
     }
     String[] otherLabels = ((RemoveUnaryTransition) o).labels;
     return Arrays.equals(labels, otherLabels);

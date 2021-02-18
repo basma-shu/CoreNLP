@@ -117,7 +117,10 @@ public class ReorderingOracle {
         if (!(transitions.get(0) instanceof ShiftTransition)) {
           return false;
         }
-        int shiftCount = 0;
+        // note that since we've done the ShiftTransition early, we
+        // remove the actual Shift from when it was supposed to happen
+        transitions.remove(0);
+        int shiftCount = 1;
         ListIterator<Transition> cursor = transitions.listIterator();
         Transition next = null;
         while (cursor.hasNext()) {
@@ -126,7 +129,7 @@ public class ReorderingOracle {
             ++shiftCount;
           } else if (next instanceof BinaryTransition) {
             --shiftCount;
-            if (shiftCount == 1) {
+            if (shiftCount < 1) {
               break;
             }
           }

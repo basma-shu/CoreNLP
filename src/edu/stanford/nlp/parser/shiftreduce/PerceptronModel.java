@@ -177,9 +177,7 @@ public class PerceptronModel extends BaseModel  {
     log.info("Number of transitions: " + transitionIndex.size());
 
     IntCounter<Pair<Integer, Integer>> firstErrors = new IntCounter<>();
-    for (Pair<Integer, Integer> firstError : result.firstErrors) {
-      firstErrors.incrementCount(firstError);
-    }
+    firstErrors.addAll(result.firstErrors);
 
     outputFirstErrors(firstErrors);
     outputReordererStats(result.reorderSuccess, result.reorderFail);
@@ -660,7 +658,8 @@ public class PerceptronModel extends BaseModel  {
       }
 
       trainingTimer.done("Iteration " + iteration);
-      outputStats(new TrainingResult(results));
+      TrainingResult result = new TrainingResult(results);
+      outputStats(result);
 
       double labelF1 = 0.0;
       if (devTreebank != null) {
@@ -670,7 +669,8 @@ public class PerceptronModel extends BaseModel  {
           log.info("New best dev score (previous best " + bestScore + ")");
           bestScore = labelF1;
           bestIteration = iteration;
-          bestFirstErrors = firstErrors;
+          bestFirstErrors = new IntCounter<>();
+          bestFirstErrors.addAll(result.firstErrors);
         } else {
           log.info("Failed to improve for " + (iteration - bestIteration) + " iteration(s) on previous best score of " + bestScore);
           if (op.trainOptions.stalledIterationLimit > 0 && (iteration - bestIteration >= op.trainOptions.stalledIterationLimit)) {
